@@ -7,9 +7,8 @@ def process_video(video_path):
 
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
 
-    # ROIを手動で設定
     x, y, w, h = cv2.selectROI("ROI Selection", old_frame, fromCenter=False, showCrosshair=True)
-    cv2.destroyWindow("ROI Selection")  # 選択後にウィンドウを閉じる
+    cv2.destroyWindow("ROI Selection")  
 
     roi_mask, p0 = setup_roi_and_features(old_gray, old_frame, x, y, w, h)
 
@@ -64,8 +63,7 @@ def calculate_distance(x_coords, y_coords):
         dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
         print('移動距離：{0}px'.format(dist))
 
-# main関数を直接呼び出す
-video_path = 'assets/sample.mp4'  # 動画ファイルのパス
+video_path = 'assets/sample2.mp4'  
 
 x_coords, y_coords = process_video(video_path)
 calculate_distance(x_coords, y_coords)

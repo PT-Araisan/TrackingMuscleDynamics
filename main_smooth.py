@@ -1,15 +1,14 @@
 import numpy as np
 import cv2
 
-def process_video(video_path):
+def process_video(video_path, x, y):
     cap = cv2.VideoCapture(video_path)
     ret, old_frame = cap.read()
 
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+    old_gray = cv2.GaussianBlur(old_gray, (5, 5), 0)
 
-    x, y, w, h = cv2.selectROI("ROI Selection", old_frame, fromCenter=False, showCrosshair=True)
-    cv2.destroyWindow("ROI Selection")  
-
+    w, h = 50, 50 
     roi_mask, p0 = setup_roi_and_features(old_gray, old_frame, x, y, w, h)
 
     x_coords, y_coords = [], []
@@ -22,6 +21,8 @@ def process_video(video_path):
             break
         
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_gray = cv2.GaussianBlur(frame_gray, (5, 5), 0)
+
         p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
         good_new = p1[st == 1]
         good_old = p0[st == 1]
@@ -63,7 +64,9 @@ def calculate_distance(x_coords, y_coords):
         dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
         print('移動距離：{0}px'.format(dist))
 
-video_path = 'assets/sample2.mp4'  
+video_path = 'assets/sample3.mp4'  
+x = 250  
+y = 250  
 
-x_coords, y_coords = process_video(video_path)
+x_coords, y_coords = process_video(video_path, x, y)
 calculate_distance(x_coords, y_coords)

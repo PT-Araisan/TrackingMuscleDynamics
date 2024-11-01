@@ -1,13 +1,18 @@
 import numpy as np
 import cv2
 
-def process_video(video_path, x, y):
+def process_video(video_path):
     cap = cv2.VideoCapture(video_path)
     ret, old_frame = cap.read()
 
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    w, h = 50, 50 
-    roi_mask, p0 = setup_roi_and_features(old_gray, old_frame, x, y, w, h)
+
+    x, y, w, h = cv2.selectROI("ROI Selection", old_frame, fromCenter=False, showCrosshair=True)
+    cv2.destroyWindow("ROI Selection")
+
+    roi_mask = np.zeros(old_gray.shape, dtype=np.uint8)  
+    roi_mask = cv2.rectangle(roi_mask, (x, y), (x + w, y + h), (255), -1)
+    p0 = cv2.goodFeaturesToTrack(old_gray, maxCorners=1, qualityLevel=0.3, minDistance=7, blockSize=7, mask=roi_mask)
 
     x_coords, y_coords = [], []
     mask = np.zeros_like(old_frame)
@@ -44,15 +49,7 @@ def process_video(video_path, x, y):
     cap.release()
     cv2.destroyAllWindows()
     
-    return x_coords, y_coords
-
-def setup_roi_and_features(old_gray, old_frame, x, y, w, h):
-    roi_mask = np.zeros(old_gray.shape, dtype=np.uint8)  
-    roi_mask = cv2.rectangle(roi_mask, (x, y), (x + w, y + h), (255), -1)
-    p0 = cv2.goodFeaturesToTrack(old_gray, maxCorners=1, qualityLevel=0.3, minDistance=7, blockSize=7, mask=roi_mask)
-    return roi_mask, p0
-
-def calculate_distance(x_coords, y_coords):
+    # 距離の計算
     if x_coords and y_coords:
         criteria = (x_coords[0], y_coords[0])
         xx = x_coords[30] if len(x_coords) > 30 else x_coords[-1]
@@ -60,9 +57,5 @@ def calculate_distance(x_coords, y_coords):
         dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
         print('移動距離：{0}px'.format(dist))
 
-video_path = 'assets/sample3.mp4'  
-x = 250  
-y = 250  
-
-x_coords, y_coords = process_video(video_path, x, y)
-calculate_distance(x_coords, y_coords)
+video_path = 'assets/sample2.mp4'  
+process_video(video_path)

@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import os
 
-cap = cv2.VideoCapture('assets/sample.mp4')
+cap = cv2.VideoCapture('assets/sample3.mp4')
 
 output_folder = 'output_images'
 os.makedirs(output_folder, exist_ok=True)

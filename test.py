@@ -13,7 +13,6 @@ def process_video(video_path, x, y):
 
     x_coords, y_coords = [], []
     mask = np.zeros_like(old_frame)
-    lk_params = dict(winSize=(200, 200), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
     while True:
         ret, frame = cap.read()
@@ -23,10 +22,15 @@ def process_video(video_path, x, y):
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame_gray = cv2.GaussianBlur(frame_gray, (5, 5), 0)
 
-        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
+        # Lucas-Kanade法
+        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None)
         good_new = p1[st == 1]
         good_old = p0[st == 1]
 
+        # Farneback法
+        flow = cv2.calcOpticalFlowFarneback(old_gray, frame_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+
+        # 描画Lucas-Kanade法の結果
         for new, old in zip(good_new, good_old):
             a, b = new.ravel()
             c, d = old.ravel()
@@ -34,6 +38,14 @@ def process_video(video_path, x, y):
             frame = cv2.circle(frame, (int(a), int(b)), 5, (0, 0, 255), -1)
             x_coords.append(a)
             y_coords.append(b)
+
+        # 描画Farneback法の結果
+        h, w = frame_gray.shape
+        y, x = np.mgrid[0:h, 0:w]
+        fx, fy = flow[..., 0], flow[..., 1]
+        for i in range(0, h, 10):
+            for j in range(0, w, 10):
+                cv2.arrowedLine(frame, (j, i), (int(j + fx[i, j]), int(i + fy[i, j])), (255, 0, 0), 1, tipLength=0.2)
 
         img = cv2.add(frame, mask)
         cv2.imshow('frame', img)
@@ -47,7 +59,7 @@ def process_video(video_path, x, y):
 
     cap.release()
     cv2.destroyAllWindows()
-    
+
     return x_coords, y_coords
 
 def setup_roi_and_features(old_gray, old_frame, x, y, w, h):
@@ -64,7 +76,7 @@ def calculate_distance(x_coords, y_coords):
         dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
         print('移動距離：{0}px'.format(dist))
 
-video_path = 'assets/sample.mp4'  
+video_path = 'assets/sample3.mp4'  
 x = 250  
 y = 250  
 

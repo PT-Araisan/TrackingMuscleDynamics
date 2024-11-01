@@ -1,68 +1,62 @@
-import numpy as np
 import cv2
+import numpy as np
 
-def process_video(video_path, x, y):
-    cap = cv2.VideoCapture(video_path)
-    ret, old_frame = cap.read()
+# 動画ファイルのパス
+video_path = "assets/sample3.mp4"
 
-    old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    w, h = 50, 50 
-    roi_mask, p0 = setup_roi_and_features(old_gray, old_frame, x, y, w, h)
+# 動画の読み込み
+cap = cv2.VideoCapture(video_path)
 
-    x_coords, y_coords = [], []
-    mask = np.zeros_like(old_frame)
-    lk_params = dict(winSize=(200, 200), maxLevel=3, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
-        good_new = p1[st == 1]
-        good_old = p0[st == 1]
-
-        for new, old in zip(good_new, good_old):
-            a, b = new.ravel()
-            c, d = old.ravel()
-            mask = cv2.line(mask, (int(a), int(b)), (int(c), int(d)), (0, 0, 255), 2)
-            frame = cv2.circle(frame, (int(a), int(b)), 5, (0, 0, 255), -1)
-            x_coords.append(a)
-            y_coords.append(b)
-
-        img = cv2.add(frame, mask)
-        cv2.imshow('frame', img)
-
-        key = cv2.waitKey(10)
-        if key == 27:  
-            break
-
-        old_gray = frame_gray.copy()
-        p0 = good_new.reshape(-1, 1, 2)
-
+# 最初のフレームを取得
+ret, frame1 = cap.read()
+if not ret:
+    print("動画を読み込めませんでした")
     cap.release()
-    cv2.destroyAllWindows()
+    exit()
+
+# ROIを選択
+roi = cv2.selectROI("Select ROI", frame1, fromCenter=False, showCrosshair=True)
+cv2.destroyWindow("Select ROI")
+
+# ROIの座標を取得
+x, y, w, h = roi
+
+# ROIのフレームをグレースケールに変換
+prvs = cv2.cvtColor(frame1[y:y+h, x:x+w], cv2.COLOR_BGR2GRAY)
+hsv = np.zeros_like(frame1)
+hsv[..., 1] = 255
+
+while True:
+    ret, frame2 = cap.read()
+    if not ret:
+        break
     
-    return x_coords, y_coords
+    next = cv2.cvtColor(frame2[y:y+h, x:x+w], cv2.COLOR_BGR2GRAY)
 
-def setup_roi_and_features(old_gray, old_frame, x, y, w, h):
-    roi_mask = np.zeros(old_gray.shape, dtype=np.uint8)  
-    roi_mask = cv2.rectangle(roi_mask, (x, y), (x + w, y + h), (255), -1)
-    p0 = cv2.goodFeaturesToTrack(old_gray, maxCorners=1, qualityLevel=0.3, minDistance=7, blockSize=7, mask=roi_mask)
-    return roi_mask, p0
+    # ファーンバック法によるオプティカルフローの計算
+    flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
 
-def calculate_distance(x_coords, y_coords):
-    if x_coords and y_coords:
-        criteria = (x_coords[0], y_coords[0])
-        xx = x_coords[30] if len(x_coords) > 30 else x_coords[-1]
-        yy = y_coords[30] if len(y_coords) > 30 else y_coords[-1]
-        dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
-        print('移動距離：{0}px'.format(dist))
+    # 流れの大きさと角度を計算
+    mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+    
+    # HSV画像の設定
+    hsv[..., 0] = ang * 180 / np.pi / 2
+    hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-video_path = 'assets/sample3.mp4'  
-x = 250  
-y = 250  
+    # フレームを表示
+    cv2.imshow('Optical Flow', rgb)
 
-x_coords, y_coords = process_video(video_path, x, y)
-calculate_distance(x_coords, y_coords)
+    k = cv2.waitKey(30) & 0xff
+    if k == 27:  # 'Esc'キーで終了
+        break
+    elif k == ord('s'):  # 's'キーで画像保存
+        cv2.imwrite('opticalfb.png', frame2)
+        cv2.imwrite('opticalhsv.png', rgb)
+
+    # 次のフレームのために更新
+    prvs = next
+
+# リソースの解放
+cap.release()
+cv2.destroyAllWindows()

@@ -65,7 +65,7 @@ def calculate_distance(x_coords, y_coords):
         print('移動距離：{0}px'.format(dist))
 
 # main関数を直接呼び出す
-video_path = 'assets/demo.mp4'  # 動画ファイルのパス
+video_path = 'assets/sample.mp4'  # 動画ファイルのパス
 
 x_coords, y_coords = process_video(video_path)
 calculate_distance(x_coords, y_coords)

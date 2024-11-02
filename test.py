@@ -1,84 +1,101 @@
-import numpy as np
 import cv2
+import numpy as np
 
-def process_video(video_path, x, y):
+def initialize_video_capture(video_path):
     cap = cv2.VideoCapture(video_path)
-    ret, old_frame = cap.read()
+    ret, frame1 = cap.read()
+    if not ret:
+        print("動画の読み込みに失敗しました。")
+        cap.release()
+        cv2.destroyAllWindows()
+        exit()
+    return cap, cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
 
-    old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    old_gray = cv2.GaussianBlur(old_gray, (5, 5), 0)
+def calculate_optical_flow(prvs, next, roi1, roi2):
+    x1, y1, w1, h1 = roi1
+    x2, y2, w2, h2 = roi2
 
-    w, h = 50, 50 
-    roi_mask, p0 = setup_roi_and_features(old_gray, old_frame, x, y, w, h)
+    roi_prvs1 = prvs[y1:y1+h1, x1:x1+w1]
+    roi_next1 = next[y1:y1+h1, x1:x1+w1]
+    
+    roi_prvs2 = prvs[y2:y2+h2, x2:x2+w2]
+    roi_next2 = next[y2:y2+h2, x2:x2+w2]
 
-    x_coords, y_coords = [], []
-    mask = np.zeros_like(old_frame)
+    flow1 = cv2.calcOpticalFlowFarneback(roi_prvs1, roi_next1, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+    flow2 = cv2.calcOpticalFlowFarneback(roi_prvs2, roi_next2, None, 0.5, 3, 15, 3, 5, 1.2, 0)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame_gray = cv2.GaussianBlur(frame_gray, (5, 5), 0)
+    mag1, _ = cv2.cartToPolar(flow1[..., 0], flow1[..., 1])
+    mag2, _ = cv2.cartToPolar(flow2[..., 0], flow2[..., 1])
 
-        # Lucas-Kanade法
-        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None)
-        good_new = p1[st == 1]
-        good_old = p0[st == 1]
+    return np.sum(mag1), np.sum(mag2), flow1, flow2, mag1, mag2
 
-        # Farneback法
-        flow = cv2.calcOpticalFlowFarneback(old_gray, frame_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+def draw_arrows(frame, flow, roi, mag, color):
+    x, y, w, h = roi
+    for y_pos in range(0, h, 5):
+        for x_pos in range(0, w, 5):
+            if mag[y_pos, x_pos] > 1:  # magを使って条件を確認
+                cv2.arrowedLine(frame,
+                                (x + x_pos, y + y_pos),
+                                (x + x_pos + int(flow[y_pos, x_pos, 0]), 
+                                 y + y_pos + int(flow[y_pos, x_pos, 1])),
+                                color, 1, tipLength=3)
 
-        # 描画Lucas-Kanade法の結果
-        for new, old in zip(good_new, good_old):
-            a, b = new.ravel()
-            c, d = old.ravel()
-            mask = cv2.line(mask, (int(a), int(b)), (int(c), int(d)), (0, 0, 255), 2)
-            frame = cv2.circle(frame, (int(a), int(b)), 5, (0, 0, 255), -1)
-            x_coords.append(a)
-            y_coords.append(b)
+# メイン処理
+cap, prvs = initialize_video_capture("assets/sample3.mp4")
 
-        # 描画Farneback法の結果
-        h, w = frame_gray.shape
-        y, x = np.mgrid[0:h, 0:w]
-        fx, fy = flow[..., 0], flow[..., 1]
-        for i in range(0, h, 10):
-            for j in range(0, w, 10):
-                cv2.arrowedLine(frame, (j, i), (int(j + fx[i, j]), int(i + fy[i, j])), (255, 0, 0), 1, tipLength=0.2)
+# ROIの定義
+roi1 = (196, 100, 50, 50)  # 第一のROI
+roi2 = (196, 150, 50, 50)  # 第二のROI
+total_motion_magnitude1 = 0.0
+total_motion_magnitude2 = 0.0
+frame_count = 0
 
-        img = cv2.add(frame, mask)
-        cv2.imshow('frame', img)
+while True:
+    ret, frame2 = cap.read()
+    if not ret:
+        break
 
-        key = cv2.waitKey(10)
-        if key == 27:  
-            break
+    next = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
-        old_gray = frame_gray.copy()
-        p0 = good_new.reshape(-1, 1, 2)
+    # オプティカルフローを計算
+    mag1, mag2, flow1, flow2, mag1_full, mag2_full = calculate_optical_flow(prvs, next, roi1, roi2)
 
-    cap.release()
-    cv2.destroyAllWindows()
+    # 動きの大きさを累積
+    total_motion_magnitude1 += mag1
+    total_motion_magnitude2 += mag2
+    frame_count += 1
 
-    return x_coords, y_coords
+    # 矢印を描画
+    draw_arrows(frame2, flow1, roi1, mag1_full, (0, 255, 0))
+    draw_arrows(frame2, flow2, roi2, mag2_full, (255, 0, 0))
 
-def setup_roi_and_features(old_gray, old_frame, x, y, w, h):
-    roi_mask = np.zeros(old_gray.shape, dtype=np.uint8)  
-    roi_mask = cv2.rectangle(roi_mask, (x, y), (x + w, y + h), (255), -1)
-    p0 = cv2.goodFeaturesToTrack(old_gray, maxCorners=1, qualityLevel=0.3, minDistance=7, blockSize=7, mask=roi_mask)
-    return roi_mask, p0
+    # ROIを元のフレームに描画
+    frame2_with_roi = frame2.copy()
+    cv2.rectangle(frame2_with_roi, roi1[:2], (roi1[0]+roi1[2], roi1[1]+roi1[3]), (255, 0, 0), 2)
+    cv2.rectangle(frame2_with_roi, roi2[:2], (roi2[0]+roi2[2], roi2[1]+roi2[3]), (0, 255, 0), 2)
 
-def calculate_distance(x_coords, y_coords):
-    if x_coords and y_coords:
-        criteria = (x_coords[0], y_coords[0])
-        xx = x_coords[30] if len(x_coords) > 30 else x_coords[-1]
-        yy = y_coords[30] if len(y_coords) > 30 else y_coords[-1]
-        dist = np.sqrt((xx - criteria[0]) ** 2 + (yy - criteria[1]) ** 2)
-        print('移動距離：{0}px'.format(dist))
+    cv2.imshow('frame2', frame2_with_roi)
 
-video_path = 'assets/sample3.mp4'  
-x = 250  
-y = 250  
+    k = cv2.waitKey(30) & 0xff
+    if k == 27:  # 'ESC'キーで終了
+        break
+    elif k == ord('s'):  # 's'キーで画像を保存
+        cv2.imwrite('opticalfb.png', frame2)
+        cv2.imwrite('opticalhsv.png', frame2_with_roi)
 
-x_coords, y_coords = process_video(video_path, x, y)
-calculate_distance(x_coords, y_coords)
+    prvs = next
+
+# 動きの総合的な大きさを出力
+print(f"上のROIの動きの大きさ: {total_motion_magnitude1:.2f}")
+print(f"下のROIの動きの大きさ: {total_motion_magnitude2:.2f}")
+
+# トータルの動きの比を計算
+if total_motion_magnitude2 > 0:
+    total_motion_ratio = total_motion_magnitude1 / total_motion_magnitude2
+else:
+    total_motion_ratio = float('inf')
+
+print(f"上の動きと下の動きの比: {total_motion_ratio:.2f}")
+
+cap.release()
+cv2.destroyAllWindows()
